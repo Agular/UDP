@@ -16,7 +16,7 @@ public class Server {
 	static int packetNr;
 	static String outFileName;
 	static byte[] data;
-	static long bytesRead;
+	static long totalBytesRead;
 	static int bufferSize = 1024;
 	static long fileSize;
 	public static void main(String[] args) {
@@ -120,7 +120,7 @@ public class Server {
 		outFileName = startPacket.getFileName();
 		fileSize = startPacket.getFileSize();
 		System.out.println("SERVER: Received from " + request.getAddress().getHostAddress() + ": SESSIONR: "
-				+ startPacket.sessionNr + " PACKET: " + startPacket.packetNr);
+				+ startPacket.sessionNr + " PACKET: " + startPacket.getPacketNr());
 		System.out.println("SERVER: Receiving file: " + startPacket.getFileName() + " size: "
 				+ startPacket.getFileSize() + " bytes");
 		System.out.println("SERVER: Included CRC32 checksum is: " + startPacket.getCrc() + "\n");
@@ -131,27 +131,30 @@ public class Server {
 		byte[] requestedData = request.getData();
 		int bytesToBeRead;
 		DataPacket dataPacket;
-		// All conditions are assumed with the received packet as the last one.
-
-		// If the packet is not the last one.
-		if (bytesRead + bufferSize - 7 < fileSize) {
+		
+		// If all written data is read and crc is left.
+		if(totalBytesRead == fileSize){
+			System.out.println("LAST DATA PACKET ONLY CRC");
+		}
+			// If the packet is not the last one...
+		else if (totalBytesRead + bufferSize - 7 < fileSize) {
 			System.out.println("NORMAL DATA PACKET");
 			bytesToBeRead = bufferSize - 3;
 			dataPacket = new DataPacket(requestedData, bytesToBeRead);
-			bytesRead += bytesToBeRead;
+			totalBytesRead += bytesToBeRead;
 			// The packet is last one and entirely full.
-		} else if (bytesRead + bufferSize - 7 == fileSize) {
+		} else if (totalBytesRead + bufferSize - 7 == fileSize) {
 			System.out.println("LAST DATA PACKET (FULL)");
 			bytesToBeRead = bufferSize - 7;
 			dataPacket = new DataPacket(requestedData, bytesToBeRead);
-			bytesRead += bytesToBeRead;
+			totalBytesRead += bytesToBeRead;
 			// The packet is last but not full
 		} else {
 			System.out.println("LAST DATA PACKET (UNFULL)");
-			bytesToBeRead = (int)(fileSize - bytesRead);
+			bytesToBeRead = (int)(fileSize - totalBytesRead);
 			System.out.println(bytesToBeRead);
 			dataPacket = new DataPacket(requestedData, bytesToBeRead);
-			bytesRead += bytesToBeRead;
+			totalBytesRead += bytesToBeRead;
 		}
 		sessionNr = dataPacket.getSessionNr();
 		packetNr = dataPacket.getPacketNr();
