@@ -34,11 +34,11 @@ public class Client {
 		InetAddress IP = null;
 		InputStream inFileStream = null;
 		File inFile;
-		byte[] buf;
+		byte[] buf = null;
 		int bufferSize = 1024;
 		int packetNr = 0;
-		long totalBytesRead;
-		long fileSize;
+		long totalBytesRead = 0;
+		long fileSize = 0;
 		/*
 		 * Open a socket. Exit if failed.
 		 */
@@ -100,52 +100,75 @@ public class Client {
 				e2.printStackTrace();
 			}
 		}
-		/////////SEND STARTPACKET 10 TIMES MAX AND TIMEOUT IF OVER 10!!!!!!!!!!!!!!!!!!!!
+		///////// SEND STARTPACKET 10 TIMES MAX AND TIMEOUT IF OVER
+		///////// 10!!!!!!!!!!!!!!!!!!!!
 		Ack ack = new Ack(receiveAck.getData());
 		System.out.println(
 				"CLIENT: ACK FROM SERVER: SESSIONNR: " + ack.getSessionNr() + " PACKETNR: " + ack.getPacketNr());
-		;
 		/*
 		 * Send file data.
 		 */
-		int bytesToBeRead;
+		int bytesToBeRead = 0;
 		boolean lastPacket = false;
-		//buf = new byte[buffersize-3];
-		try {
-			// There is more data to be read.
-			if(totalBytesRead + bufferSize - 3 <fileSize){
-				bytesToBeRead = bufferSize - 3;
-				buf = new byte[bytesToBeRead];
-			}
-			// The last packet is filled perfectly.
-			else if(totalBytesRead + bufferSize - 7 == fileSize){
-				bytesToBeRead = bufferSize - 7;
-				buf = new byte[bytesToBeRead];
-				lastPacket = true;
-			}
-			// It is the last packet, but half-filled.
-			else if (totalBytesRead + bufferSize - 7 > fileSize){
-				bytesToBeRead = (int)(fileSize - totalBytesRead);
-				buf = new byte[bytesToBeRead];
-				lastPacket = true;
-			} 
-			// Reading all into buffer would result client not be able to write crc, so we are leaving the last byte out.
-			else if ((totalBytesRead + bufferSize - 7 < fileSize) &&( fileSize - totalBytesRead) <= (long)(bufferSize - 3)) ){
-				bytesToBeRead = (int)(fileSize - totalBytesRead -1);
-				buf = new byte[bytesToBeRead];
-			}
-			while ((bytesRead = inFileStream.read(buf, 0, buffersize-3)) != -1) {
+		boolean ackIsReceived = false;
+		CRC32 crc32 = new CRC32();
+		DataPacket dataPacket;
+		while (fileSize != totalBytesRead) {
+			try {
+				// There is more data to be read.
+				if (totalBytesRead + bufferSize - 3 < fileSize) {
+					bytesToBeRead = bufferSize - 3;
+					buf = new byte[bytesToBeRead];
+				}
+				// The last packet is filled perfectly.
+				else if (totalBytesRead + bufferSize - 7 == fileSize) {
+					bytesToBeRead = bufferSize - 7;
+					buf = new byte[bytesToBeRead];
+					lastPacket = true;
+				}
+				// It is the last packet, but half-filled.
+				else if (totalBytesRead + bufferSize - 7 > fileSize) {
+					bytesToBeRead = (int) (fileSize - totalBytesRead);
+					buf = new byte[bytesToBeRead];
+					lastPacket = true;
+				}
+				// Reading all into buffer would result client not be able to
+				// write crc, so we are leaving the last byte out.
+				else if ((totalBytesRead + bufferSize - 7 < fileSize)
+						&& ((fileSize - totalBytesRead) <= (long) (bufferSize - 3))) {
+					bytesToBeRead = (int) (fileSize - totalBytesRead);
+					buf = new byte[bytesToBeRead];
+				}
+				int bytesRead = inFileStream.read(buf, 0, bytesToBeRead);
+				totalBytesRead+= bytesRead;
+				System.out.println("bytesread: " + bytesRead + " bytesToBeRead: " + bytesToBeRead);
+				crc32.update(buf, 0, bytesToBeRead);
 				packetNr += 1;
-				DataPacket dataPacket = new DataPacket(sessionNr, packetNr, buf, bytesRead);
+				if (!lastPacket) {
+					dataPacket = new DataPacket(sessionNr, packetNr, buf, bytesRead);
+					System.out.println("TESTING");
+				} else {
+					dataPacket = new DataPacket(sessionNr, packetNr, buf, bytesRead, crc32.getValue());
+					System.out.println("TESTING @@@@");
+				}
+
 				data = dataPacket.returnData();
 				sendPacket = new DatagramPacket(data, data.length, IP, port);
 				socket.send(sendPacket);
-			}
-		} catch (IOException e1) {
-			System.out.println("Error reading from file stream.");
-			e1.printStackTrace();
-		}
+				socket.receive(receiveAck);
+				ack = new Ack(receiveAck.getData());
+				System.out.println(
+						"CLIENT: ACK FROM SERVER: SESSIONNR: " + ack.getSessionNr() + " PACKETNR: " + ack.getPacketNr());
 
+			} catch (IOException e1) {
+				System.out.println("Error reading from file stream.");
+				e1.printStackTrace();
+			}
+		}
+		if (!lastPacket) {
+			// send crc in if it did not fit in with the last piece of data.
+			System.out.println("YOU REACHED THIS PART - TODO");
+		}
 		// CLEANUP
 		try {
 			inFileStream.close();
