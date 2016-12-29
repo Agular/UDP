@@ -12,8 +12,8 @@ public class StartPacket extends Packet {
 	int crc; // 32 bit (4 Byes)
 
 	/*
-	 * Used for creating the startPacket. Used in client.
-	 * Our byte[] data must have the size (22 + fileNameSize) bytes
+	 * Used for creating the startPacket. Used in client. Our byte[] data must
+	 * have the size (22 + fileNameSize) bytes
 	 */
 	public StartPacket(short sessionNr, int packetNr, String fileName, long fileSize) {
 		super.sessionNr = sessionNr;
@@ -22,9 +22,10 @@ public class StartPacket extends Packet {
 		this.fileSize = fileSize;
 		this.fileNameSize = (short) this.fileName.length();
 	}
+
 	/*
 	 * Rebuilds the startPacket. Used in server.
-	 * */
+	 */
 	public StartPacket(byte[] data) {
 		super.sessionNr = (short) (((data[0] & 0xFF) << 8) | (data[1] & 0xFF));
 		super.packetNr = (int) data[2];
@@ -39,13 +40,14 @@ public class StartPacket extends Packet {
 		}
 		fileNameSize = (short) (((data[16] & 0xFF) << 8) | (data[17] & 0xFF));
 		fileName = new String(Arrays.copyOfRange(data, 18, 18 + fileNameSize));
-
-		crc = ((data[26] & 0xFF) << 24) | ((data[27] & 0xFF) << 16)
-				| ((data[28] & 0xFF) << 8) | (data[29] & 0xFF);
+		int crcIdx = 18 + fileNameSize;
+		crc = ((data[crcIdx] & 0xFF) << 24) | ((data[crcIdx + 1] & 0xFF) << 16) | ((data[crcIdx + 2] & 0xFF) << 8)
+				| (data[crcIdx + 3] & 0xFF);
 	}
+
 	/*
 	 * Used in client to create the packet for the startPacket.
-	 * */
+	 */
 	@Override
 	byte[] returnData() {
 		byte[] data = new byte[22 + fileNameSize];

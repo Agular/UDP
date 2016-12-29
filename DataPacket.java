@@ -27,32 +27,38 @@ public class DataPacket extends Packet {
 	public DataPacket(byte[] data, int bytesToBeRead) {
 		super.sessionNr = (short) (((data[0] & 0xFF) << 8) | (data[1] & 0xFF));
 		super.packetNr = (int) data[2];
-		this.data = new byte[bytesToBeRead];
-		System.arraycopy(data, 3, this.data, 0, bytesToBeRead);
+		if (bytesToBeRead != 0) {
+			this.data = new byte[bytesToBeRead];
+			System.arraycopy(data, 3, this.data, 0, bytesToBeRead);
+		} else{
+			crc = ((data[3] & 0xFF) << 24) | ((data[4] & 0xFF) << 16) | ((data[5] & 0xFF) << 8)
+					| (data[6] & 0xFF);
+		}
 	}
 
 	@Override
 	byte[] returnData() {
 		if (crc == -1) {
 			int dataLength = this.data.length;
-			byte[] data = new byte[this.data.length + 3];
+			byte[] data = new byte[dataLength + 3];
 			data[0] = (byte) (sessionNr >> 8);
 			data[1] = (byte) (sessionNr & 0xFF);
 			data[2] = (byte) packetNr;
-			System.arraycopy(this.data, 0, data, 3, this.data.length);
+			System.arraycopy(this.data, 0, data, 3, dataLength);
 			return data;
 		} else if (crc != -1 && this.data != null) {
 			int dataLength = this.data.length;
-			byte[] data = new byte[this.data.length + 7];
+			int sendPacketLength = dataLength + 7;
+			byte[] data = new byte[sendPacketLength];
 			data[0] = (byte) (sessionNr >> 8);
 			data[1] = (byte) (sessionNr & 0xFF);
 			data[2] = (byte) packetNr;
-			System.arraycopy(this.data, 0, data, 3, this.data.length);
+			System.arraycopy(this.data, 0, data, 3, dataLength);
 			int iCrc = (int) crc;
-			data[dataLength - 4] = (byte) (iCrc >> 24);
-			data[dataLength - 3] = (byte) (iCrc >> 16);
-			data[dataLength - 2] = (byte) (iCrc >> 8);
-			data[dataLength - 1] = (byte) (iCrc /* >> 0 */);
+			data[sendPacketLength - 4] = (byte) (iCrc >> 24);
+			data[sendPacketLength - 3] = (byte) (iCrc >> 16);
+			data[sendPacketLength - 2] = (byte) (iCrc >> 8);
+			data[sendPacketLength - 1] = (byte) (iCrc /* >> 0 */);
 			return data;
 		} else {
 			byte[] data = new byte[7];
@@ -87,6 +93,7 @@ public class DataPacket extends Packet {
 			return -1;
 		}
 	}
+
 	public int getICrc() {
 		if (crc != 0) {
 			return (int) crc;

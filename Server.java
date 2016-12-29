@@ -17,14 +17,15 @@ public class Server {
 	static String outFileName;
 	static byte[] data;
 	static long totalBytesRead;
-	static int bufferSize = 1024;
+	static int bufferSize = 1500;
 	static long fileSize;
+	static int bytesToBeRead;
+
 	public static void main(String[] args) {
 		int port;
 		DatagramSocket socket = null;
 		File outFile;
 		FileOutputStream outPutStream = null;
-
 		byte[] buf = new byte[bufferSize];
 
 		/*
@@ -62,20 +63,30 @@ public class Server {
 		DatagramPacket ackDatagrampacket = new DatagramPacket(ack.returnData(), 3, inPacket.getAddress(),
 				inPacket.getPort());
 		try {
-			System.out.println("SERVER: SENDING ACK: SESSIONNR: " + sessionNr + " PACKETNR: " + packetNr);
+			outFile = new File(outFileName);
+			if (!outFile.exists()) {
+				outFile.createNewFile();
+			} else {
+				for (int i = 1; i < Integer.MAX_VALUE; i++) {
+					outFile = new File(i+ outFileName);
+					if(!outFile.exists()){
+						break;
+					}
+				}
+			}
+			outPutStream = new FileOutputStream(outFile);
+		} catch (IOException e1) {
+			;
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+
+		try {
+			System.out.println("SERVER: SENDING ACK: SESSIONNR: " + sessionNr + " PACKETNR: " + packetNr + "\n");
 			socket.send(ackDatagrampacket);
 		} catch (IOException e) {
 			System.out.println("Could not send ACK!");
 			e.printStackTrace();
-		}
-
-		outFile = new File("testOut.txt");
-		try {
-			outFile.createNewFile();
-			outPutStream = new FileOutputStream(outFile);
-		} catch (IOException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
 		}
 
 		while (!socket.isClosed()) {
@@ -91,9 +102,10 @@ public class Server {
 			// Print the recieved data.
 			try {
 				readDataPacket(inPacket);
-				System.out.println(data.length);
-				outPutStream.write(data);
-				if(fileSize == bytesRead){
+				if (fileSize != totalBytesRead) {
+					outPutStream.write(data);
+					totalBytesRead += bytesToBeRead;
+				} else {
 					outPutStream.close();
 				}
 			} catch (Exception e) {
@@ -103,6 +115,7 @@ public class Server {
 			ack = new Ack(sessionNr, packetNr);
 			ackDatagrampacket = new DatagramPacket(ack.returnData(), 3, inPacket.getAddress(), inPacket.getPort());
 			try {
+				System.out.println("SERVER: SENDING ACK SESSION: " + sessionNr + " PACKET: " + packetNr + "\n");
 				socket.send(ackDatagrampacket);
 			} catch (IOException e) {
 				System.out.println("Could not send ACK!");
@@ -129,38 +142,36 @@ public class Server {
 	public static void readDataPacket(DatagramPacket request) throws Exception {
 		// Obtain references to the packet's array of bytes.
 		byte[] requestedData = request.getData();
-		int bytesToBeRead;
+		int packetSize = request.getLength();
 		DataPacket dataPacket;
-		
+		System.out.println("THE SIZE OF RECEIVED DATAPACKET: " + packetSize);
 		// If all written data is read and crc is left.
-		if(totalBytesRead == fileSize){
-			System.out.println("LAST DATA PACKET ONLY CRC");
+		if (totalBytesRead == fileSize) {
+			System.out.println("SERVER: LAST DATA PACKET ONLY CRC");
+			bytesToBeRead = 0;
+			dataPacket = new DataPacket(requestedData, bytesToBeRead);
 		}
-			// If the packet is not the last one...
-		else if (totalBytesRead + bufferSize - 7 < fileSize) {
-			System.out.println("NORMAL DATA PACKET");
-			bytesToBeRead = bufferSize - 3;
+		// If the packet is not the last one...
+		else if (totalBytesRead + packetSize - 7 < fileSize) {
+			System.out.println("SERVER: NORMAL DATA PACKET");
+			bytesToBeRead = packetSize - 3;
 			dataPacket = new DataPacket(requestedData, bytesToBeRead);
-			totalBytesRead += bytesToBeRead;
 			// The packet is last one and entirely full.
-		} else if (totalBytesRead + bufferSize - 7 == fileSize) {
-			System.out.println("LAST DATA PACKET (FULL)");
-			bytesToBeRead = bufferSize - 7;
+		} else if (totalBytesRead + packetSize - 7 == fileSize) {
+			System.out.println("SERVER: LAST DATA PACKET (FULL)");
+			bytesToBeRead = packetSize - 7;
 			dataPacket = new DataPacket(requestedData, bytesToBeRead);
-			totalBytesRead += bytesToBeRead;
 			// The packet is last but not full
 		} else {
-			System.out.println("LAST DATA PACKET (UNFULL)");
-			bytesToBeRead = (int)(fileSize - totalBytesRead);
+			System.out.println("SERVER: LAST DATA PACKET (UNFULL)");
+			bytesToBeRead = (int) (fileSize - totalBytesRead);
 			System.out.println(bytesToBeRead);
 			dataPacket = new DataPacket(requestedData, bytesToBeRead);
-			totalBytesRead += bytesToBeRead;
 		}
 		sessionNr = dataPacket.getSessionNr();
 		packetNr = dataPacket.getPacketNr();
 		data = dataPacket.returnSendData();
-		System.out.println("THE SIZE OF WRITABLE DATA: "+data.length);
 		System.out.println("SERVER: DATAPACKET RECEIVE " + request.getAddress().getHostAddress() + ": SESSIONR: "
-				+ dataPacket.getPacketNr() + " PACKET: " + dataPacket.getPacketNr());
+				+ dataPacket.getSessionNr() + " PACKET: " + dataPacket.getPacketNr() + "\n");
 	}
 }

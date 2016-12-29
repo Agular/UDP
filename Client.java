@@ -104,7 +104,7 @@ public class Client {
 		///////// 10!!!!!!!!!!!!!!!!!!!!
 		Ack ack = new Ack(receiveAck.getData());
 		System.out.println(
-				"CLIENT: ACK FROM SERVER: SESSIONNR: " + ack.getSessionNr() + " PACKETNR: " + ack.getPacketNr()+ "\n");
+				"CLIENT: ACK FROM SERVER: SESSIONNR: " + ack.getSessionNr() + " PACKETNR: " + ack.getPacketNr() + "\n");
 		packetNr += 1;
 		/*
 		 * Send file data.
@@ -133,7 +133,8 @@ public class Client {
 					buf = new byte[bytesToBeRead];
 					lastPacket = true;
 				}
-				// Crc can not be fitted with the datapacket, so it would be sent later separately.
+				// Crc can not be fitted with the datapacket, so it would be
+				// sent later separately.
 				else if ((totalBytesRead + bufferSize - 7 < fileSize)
 						&& ((fileSize - totalBytesRead) <= (long) (bufferSize - 3))) {
 					bytesToBeRead = (int) (fileSize - totalBytesRead);
@@ -145,12 +146,14 @@ public class Client {
 				crc32.update(buf, 0, bytesToBeRead);
 				if (!lastPacket) {
 					dataPacket = new DataPacket(sessionNr, packetNr, buf, bytesRead);
-					System.out.println("SENDING NORMAL DATAPACKET" + "SN: "+ dataPacket.getSessionNr() + " PKN: "+ dataPacket.getPacketNr()+" DATASIZE: " + dataPacket.getDataSize()+ "\n");
+					System.out.println("SENDING NORMAL DATAPACKET" + "SN: " + dataPacket.getSessionNr() + " PKN: "
+							+ dataPacket.getPacketNr() + " DATASIZE: " + dataPacket.getDataSize() + "\n");
 				} else {
 					dataPacket = new DataPacket(sessionNr, packetNr, buf, bytesRead, crc32.getValue());
 					System.out.println("SENDING LAST DATAPACKET WITH CRC");
-					System.out.println("SESSIONNR: "+ dataPacket.getSessionNr() + " PACKETNR: "+ dataPacket.getPacketNr()+" DATASIZE: " + dataPacket.getDataSize());
-					System.out.println("CRC: " + dataPacket.getCrc()+ "\n");
+					System.out.println("SESSIONNR: " + dataPacket.getSessionNr() + " PACKETNR: "
+							+ dataPacket.getPacketNr() + " DATASIZE: " + dataPacket.getDataSize());
+					System.out.println("CLIENT: CRC OF ALL DATA: " + dataPacket.getICrc() + "\n");
 				}
 
 				data = dataPacket.returnData();
@@ -159,20 +162,21 @@ public class Client {
 				socket.receive(receiveAck);
 				ack = new Ack(receiveAck.getData());
 				System.out.println("CLIENT: ACK FROM SERVER: SESSIONNR: " + ack.getSessionNr() + " PACKETNR: "
-						+ ack.getPacketNr()+ "\n");
+						+ ack.getPacketNr() + "\n");
 
 			} catch (IOException e1) {
-				System.out.println("Error reading from file stream.");
+				System.out.println("CLIENT: Error reading from file stream.");
 				e1.printStackTrace();
 			}
-			packetNr += 1;
+			packetNr = (packetNr + 1) % 2;
 		}
-		
+
 		if (!lastPacket) {
 			try {
-				System.out.println("SENDING LAST DATAPACKET ONLY CRC");
+				System.out.println("CLIENT: SENDING LAST DATAPACKET ONLY CRC");
 				dataPacket = new DataPacket(sessionNr, packetNr, crc32.getValue());
 				data = dataPacket.returnData();
+				System.out.println("CLIENT: CRC OF ALL DATA: "+dataPacket.getICrc());
 				sendPacket = new DatagramPacket(data, data.length, IP, port);
 				socket.send(sendPacket);
 				socket.receive(receiveAck);
