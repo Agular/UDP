@@ -8,6 +8,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.util.Random;
 import java.util.zip.CRC32;
@@ -39,11 +40,16 @@ public class Client {
 		int packetNr = 0;
 		long totalBytesRead = 0;
 		long fileSize = 0;
+		final int MAX_FAILED_CONNECTIONS = 10;
+		int failed_connections = 0;
+		int timeOutMs = 1000;
+
 		/*
 		 * Open a socket. Exit if failed.
 		 */
 		try {
 			socket = new DatagramSocket();
+			socket.setSoTimeout(timeOutMs);
 		} catch (SocketException e) {
 			System.out.println("SOCKET CREATION FAILED! Exiting...");
 			e.printStackTrace();
@@ -79,6 +85,10 @@ public class Client {
 		byte[] data = startPacket.returnData();
 		DatagramPacket sendPacket = new DatagramPacket(data, data.length, IP, port);
 		DatagramPacket receiveAck = new DatagramPacket(new byte[3], 3);
+		Ack ack;
+
+		// Will send Startpacket a number of MAX_FAILED_CONNECTIONS times.
+		// Need to include server time out!
 		while (true) {
 			try {
 				System.out.println("CLIENT: SESSIONNR: " + sessionNr);
@@ -94,17 +104,35 @@ public class Client {
 			}
 			try {
 				socket.receive(receiveAck);
-				break;
+				ack = new Ack(receiveAck.getData());
+				if (isAckCorrect(ack, sessionNr, packetNr)) {
+					System.out.println("CLIENT: ACK FROM SERVER: SESSIONNR: " + ack.getSessionNr() + " PACKETNR: "
+							+ ack.getPacketNr() + "\n");
+					failed_connections = 0;
+					break;
+				} else {
+					failed_connections += 1;
+					if (failed_connections == MAX_FAILED_CONNECTIONS) {
+						System.out.println("CLIENT: SERVER FAILED 10 TIMES TO SEND CORRECT ACK");
+						System.out.println("CLIENT: EXITING");
+						System.exit(-1);
+					}
+				}
+
+			} catch (SocketTimeoutException to) {
+				System.out.println("CLIENT: SERVER TIMED OUT!");
+				to.printStackTrace();
+				failed_connections += 1;
+				if (failed_connections == MAX_FAILED_CONNECTIONS) {
+					System.out.println("CLIENT: SERVER FAILED 10 TIMES TO SEND CORRECT ACK");
+					System.out.println("CLIENT: EXITING");
+					System.exit(-1);
+				}
 			} catch (IOException e2) {
 				// TODO Auto-generated catch block
 				e2.printStackTrace();
 			}
 		}
-		///////// SEND STARTPACKET 10 TIMES MAX AND TIMEOUT IF OVER
-		///////// 10!!!!!!!!!!!!!!!!!!!!
-		Ack ack = new Ack(receiveAck.getData());
-		System.out.println(
-				"CLIENT: ACK FROM SERVER: SESSIONNR: " + ack.getSessionNr() + " PACKETNR: " + ack.getPacketNr() + "\n");
 		packetNr += 1;
 		/*
 		 * Send file data.
@@ -158,12 +186,33 @@ public class Client {
 
 				data = dataPacket.returnData();
 				sendPacket = new DatagramPacket(data, data.length, IP, port);
-				socket.send(sendPacket);
-				socket.receive(receiveAck);
-				ack = new Ack(receiveAck.getData());
-				System.out.println("CLIENT: ACK FROM SERVER: SESSIONNR: " + ack.getSessionNr() + " PACKETNR: "
-						+ ack.getPacketNr() + "\n");
-
+				while (true) {
+					socket.send(sendPacket);
+					socket.receive(receiveAck);
+					ack = new Ack(receiveAck.getData());
+					if (isAckCorrect(ack, sessionNr, packetNr)) {
+						System.out.println("CLIENT: ACK FROM SERVER: SESSIONNR: " + ack.getSessionNr() + " PACKETNR: "
+								+ ack.getPacketNr() + "\n");
+						failed_connections = 0;
+						break;
+					} else {
+						failed_connections += 1;
+						if (failed_connections == MAX_FAILED_CONNECTIONS) {
+							System.out.println("CLIENT: SERVER FAILED 10 TIMES TO SEND CORRECT ACK");
+							System.out.println("CLIENT: EXITING");
+							System.exit(-1);
+						}
+					}
+				}
+			} catch (SocketTimeoutException to) {
+				System.out.println("CLIENT: SERVER TIMED OUT!");
+				to.printStackTrace();
+				failed_connections += 1;
+				if (failed_connections == MAX_FAILED_CONNECTIONS) {
+					System.out.println("CLIENT: SERVER FAILED 10 TIMES TO SEND CORRECT ACK");
+					System.out.println("CLIENT: EXITING");
+					System.exit(-1);
+				}
 			} catch (IOException e1) {
 				System.out.println("CLIENT: Error reading from file stream.");
 				e1.printStackTrace();
@@ -176,14 +225,36 @@ public class Client {
 				System.out.println("CLIENT: SENDING LAST DATAPACKET ONLY CRC");
 				dataPacket = new DataPacket(sessionNr, packetNr, crc32.getValue());
 				data = dataPacket.returnData();
-				System.out.println("CLIENT: CRC OF ALL DATA: "+dataPacket.getICrc());
+				System.out.println("CLIENT: CRC OF ALL DATA: " + dataPacket.getICrc());
 				sendPacket = new DatagramPacket(data, data.length, IP, port);
-				socket.send(sendPacket);
-				socket.receive(receiveAck);
-				ack = new Ack(receiveAck.getData());
-				System.out.println("CLIENT: ACK FROM SERVER: SESSIONNR: " + ack.getSessionNr() + " PACKETNR: "
-						+ ack.getPacketNr());
-			} catch (IOException e2) {
+				while (true) {
+					socket.send(sendPacket);
+					socket.receive(receiveAck);
+					ack = new Ack(receiveAck.getData());
+					if (isAckCorrect(ack, sessionNr, packetNr)) {
+						System.out.println("CLIENT: ACK FROM SERVER: SESSIONNR: " + ack.getSessionNr() + " PACKETNR: "
+								+ ack.getPacketNr() + "\n");
+						failed_connections = 0;
+						break;
+					} else {
+						failed_connections += 1;
+						if (failed_connections == MAX_FAILED_CONNECTIONS) {
+							System.out.println("CLIENT: SERVER FAILED 10 TIMES TO SEND CORRECT ACK");
+							System.out.println("CLIENT: EXITING");
+							System.exit(-1);
+						}
+					}
+				}
+			} catch (SocketTimeoutException to) {
+				System.out.println("CLIENT: SERVER TIMED OUT!");
+				to.printStackTrace();
+				failed_connections += 1;
+				if (failed_connections == MAX_FAILED_CONNECTIONS) {
+					System.out.println("CLIENT: SERVER FAILED 10 TIMES TO SEND CORRECT ACK");
+					System.out.println("CLIENT: EXITING");
+					System.exit(-1);
+				}
+			}catch (IOException e2) {
 				e2.printStackTrace();
 			}
 		}
@@ -195,5 +266,12 @@ public class Client {
 			e.printStackTrace();
 		}
 		socket.close();
+	}
+
+	public static boolean isAckCorrect(Ack ack, int currentSessionNr, int currentPacketNr) {
+		if (ack.getSessionNr() != currentSessionNr || ack.getPacketNr() != currentPacketNr) {
+			return false;
+		}
+		return true;
 	}
 }

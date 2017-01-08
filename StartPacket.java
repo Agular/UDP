@@ -32,7 +32,7 @@ public class StartPacket extends Packet {
 		// get Start, not
 		// necessary atm, maybe in the future
 		byte[] test = Arrays.copyOfRange(data, 3, 8);
-		// System.out.println(new String(test));
+		// System.out.aprintln(new String(test));
 		fileSize = 0;
 		for (int i = 0; i < 8; i++) {
 			fileSize <<= 8;
