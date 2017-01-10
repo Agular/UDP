@@ -24,12 +24,17 @@ public class DataPacket extends Packet {
 		this.crc = crc;
 	}
 
-	public DataPacket(byte[] data, int bytesToBeRead) {
+	public DataPacket(byte[] data, int bytesToBeRead, boolean last) {
 		super.sessionNr = (short) (((data[0] & 0xFF) << 8) | (data[1] & 0xFF));
 		super.packetNr = (int) data[2];
 		if (bytesToBeRead != 0) {
 			this.data = new byte[bytesToBeRead];
 			System.arraycopy(data, 3, this.data, 0, bytesToBeRead);
+			if(last){
+				crc = ((data[3 + bytesToBeRead] & 0xFF) << 24) | ((data[3 + bytesToBeRead + 1] & 0xFF) << 16) | ((data[3 + bytesToBeRead + 2] & 0xFF) << 8)
+						| (data[3 + bytesToBeRead + 3] & 0xFF);
+			}
+			
 		} else{
 			crc = ((data[3] & 0xFF) << 24) | ((data[4] & 0xFF) << 16) | ((data[5] & 0xFF) << 8)
 					| (data[6] & 0xFF);

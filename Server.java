@@ -29,11 +29,11 @@ public class Server {
 	static CRC32 crc32 = null;
 	static boolean lastCrcIsReceived;
 	static File outFile = null;
-	
+
 	public static void main(String[] args) {
 		int port;
 		DatagramSocket socket = null;
-		
+
 		byte[] buf = new byte[bufferSize];
 		Ack ack = null;
 		DatagramPacket ackDatagrampacket = null;
@@ -147,26 +147,26 @@ public class Server {
 		if (totalBytesRead == fileSize) {
 			System.out.println("SERVER: LAST DATA PACKET ONLY CRC");
 			bytesToBeRead = 0;
-			dataPacket = new DataPacket(requestedData, bytesToBeRead);
+			dataPacket = new DataPacket(requestedData, bytesToBeRead, false);
 			lastCrcIsReceived = true;
 		}
 		// If the packet is not the last one...
 		else if (totalBytesRead + packetSize - 7 < fileSize) {
 			System.out.println("SERVER: NORMAL DATA PACKET");
 			bytesToBeRead = packetSize - 3;
-			dataPacket = new DataPacket(requestedData, bytesToBeRead);
+			dataPacket = new DataPacket(requestedData, bytesToBeRead, false);
 			// The packet is last one.
 		} else if (totalBytesRead + packetSize - 7 == fileSize) {
 			System.out.println("SERVER: LAST DATA PACKET");
 			bytesToBeRead = packetSize - 7;
-			dataPacket = new DataPacket(requestedData, bytesToBeRead);
+			dataPacket = new DataPacket(requestedData, bytesToBeRead, true);
 			lastCrcIsReceived = true;
 			// The packet is last but without crc
 		} else {
 			System.out.println("SERVER: LAST DATA PACKET (WITHOUT CRC)");
 			bytesToBeRead = (int) (fileSize - totalBytesRead);
 			System.out.println(bytesToBeRead);
-			dataPacket = new DataPacket(requestedData, bytesToBeRead);
+			dataPacket = new DataPacket(requestedData, bytesToBeRead, false);
 		}
 		sessionNr = dataPacket.getSessionNr();
 		packetNr = dataPacket.getPacketNr();
@@ -183,6 +183,7 @@ public class Server {
 			}
 		}
 		if (lastCrcIsReceived) {
+			System.out.println(dataPacket.getICrc() + " " + (int) crc32.getValue() );
 			checkFileIntegrity(dataPacket.getICrc(), (int) crc32.getValue());
 		}
 	}
@@ -263,9 +264,9 @@ public class Server {
 		if (clientCrc == serverCrc) {
 			System.out.println("SERVER: FILE WAS SUCCESSFULLY RECEIVED");
 			System.out.println("SERVER: WAITING FOR NEXT FILE!\n");
-		}else{
+		} else {
 			System.out.println("SERVER: FILE RECEIVE WAS UNSUCCESSFUL");
-			System.out.println("SERVER: DELETING FILE: "+ outFileName);
+			System.out.println("SERVER: DELETING FILE: " + outFileName);
 			outFile.delete();
 		}
 	}
