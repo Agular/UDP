@@ -11,6 +11,7 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
+import java.util.Random;
 import java.util.zip.CRC32;
 
 public class Server {
@@ -29,28 +30,44 @@ public class Server {
 	static CRC32 crc32 = null;
 	static boolean lastCrcIsReceived;
 	static File outFile = null;
+	static final int SERVER_TIMEOUT = 10000;
+	static DatagramSocket socket = null;
+	static Boolean fileIsComplete;
 
 	public static void main(String[] args) {
 		int port;
-		DatagramSocket socket = null;
-
 		byte[] buf = new byte[bufferSize];
 		Ack ack = null;
 		DatagramPacket ackDatagrampacket = null;
-
+		int delay = 0;
+		double lossRate = 0;
+		Random rand = new Random();
 		/*
 		 * Check for port input. Exit if failed.
 		 */
-		if (args.length != 1) {
-			System.out.println("Input: port");
-			System.exit(-1);
-		}
-		port = Integer.parseInt(args[0]);
-		try {
-			socket = new DatagramSocket(port);
-		} catch (SocketException e) {
-			System.out.println("Cannot open port on this number.");
-			e.printStackTrace();
+		if (args.length == 1) {
+			port = Integer.parseInt(args[0]);
+			try {
+				socket = new DatagramSocket(port);
+			} catch (SocketException e) {
+				System.out.println("Cannot open port on this number.");
+				e.printStackTrace();
+				System.exit(-1);
+			}
+		} else if (args.length == 3) {
+			port = Integer.parseInt(args[0]);
+			lossRate = Double.parseDouble(args[1]);
+			delay = Integer.parseInt(args[2]);
+			try {
+				socket = new DatagramSocket(port);
+			} catch (SocketException e) {
+				System.out.println("Cannot open port on this number.");
+				e.printStackTrace();
+				System.exit(-1);
+			}
+		} else {
+			System.out.println("usage: <port>");
+			System.out.println("usage: <port> <lossrate(optional) <delay(optional)>");
 			System.exit(-1);
 		}
 		// Create a datagram packet to hold incoming UDP startPacket.
@@ -62,6 +79,23 @@ public class Server {
 			// Block until the host receives a UDP packet.
 			try {
 				socket.receive(inPacket);
+			} catch (SocketTimeoutException to) {
+				System.out.println("SERVER: PACKET RECEIVE TIMED OUT");
+				try {
+					socket.setSoTimeout(0);
+					sessionNr = -1;
+					try {
+						outPutStream.close();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				} catch (SocketException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				sessionNr = -1;
+				continue;
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
@@ -72,29 +106,42 @@ public class Server {
 				// The client has not received any startpackets or the client
 				// has finished it's last receive.
 				if (sessionNr == -1 || (fileSize != 0 && fileSize == totalBytesRead)) {
-					System.out.println("SERVER: RECEIVED START PACKET");
+					//System.out.println("SERVER: RECEIVED START PACKET");
 					try {
 						readStartData(inPacket);
 						crc32 = new CRC32();
 						lastCrcIsReceived = false;
+						socket.setSoTimeout(SERVER_TIMEOUT);
+						fileIsComplete = null;
 					} catch (Exception e) {
 						// TODO Auto-generated catch block
 						e.printStackTrace();
 					}
 				}
 				createFile();
-				ack = new Ack(sessionNr, packetNr);
-				ackDatagrampacket = new DatagramPacket(ack.returnData(), 3, inPacket.getAddress(), inPacket.getPort());
+				if (rand.nextDouble() > lossRate) {
+					ack = new Ack(sessionNr, packetNr);
+					ackDatagrampacket = new DatagramPacket(ack.returnData(), 3, inPacket.getAddress(),
+							inPacket.getPort());
+					try {
+						System.out.println("SERVER: SENDING ACK SESSION: " + sessionNr + " PACKET: " + packetNr + "\n");
+						socket.send(ackDatagrampacket);
+					} catch (IOException e) {
+						System.out.println("Could not send ACK!");
+						e.printStackTrace();
+					}
+				} else {
+					System.out.println("SERVER: SIMULATED PACKET LOSS - NO REPLY SENT");
+				}
 				try {
-					System.out.println("SERVER: SENDING ACK SESSION: " + sessionNr + " PACKET: " + packetNr + "\n");
-					socket.send(ackDatagrampacket);
-				} catch (IOException e) {
-					System.out.println("Could not send ACK!");
-					e.printStackTrace();
+					Thread.sleep((int) (rand.nextDouble() * 2 * delay));
+				} catch (InterruptedException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
 				}
 				break;
 			case DATA_PACKET:
-				System.out.println("SERVER: RECEIVED DATA PACKET");
+				//System.out.println("SERVER: RECEIVED DATA PACKET");
 				// Print the receieved data.
 				if (isNewDataPacket(inPacket)) {
 					try {
@@ -104,14 +151,30 @@ public class Server {
 						e.printStackTrace();
 					}
 				}
-				ack = new Ack(sessionNr, packetNr);
-				ackDatagrampacket = new DatagramPacket(ack.returnData(), 3, inPacket.getAddress(), inPacket.getPort());
-				try {
-					System.out.println("SERVER: SENDING ACK SESSION: " + sessionNr + " PACKET: " + packetNr + "\n");
-					socket.send(ackDatagrampacket);
-				} catch (IOException e) {
-					System.out.println("Could not send ACK!");
-					e.printStackTrace();
+				if (fileIsComplete == null || (fileIsComplete !=null && fileIsComplete)) {
+					if (rand.nextDouble() > lossRate) {
+						ack = new Ack(sessionNr, packetNr);
+						ackDatagrampacket = new DatagramPacket(ack.returnData(), 3, inPacket.getAddress(),
+								inPacket.getPort());
+						try {
+							System.out.println(
+									"SERVER: SENDING ACK SESSION: " + sessionNr + " PACKET: " + packetNr + "\n");
+							socket.send(ackDatagrampacket);
+						} catch (IOException e) {
+							System.out.println("Could not send ACK!");
+							e.printStackTrace();
+						}
+					} else {
+						System.out.println("SERVER: SIMULATED PACKET LOSS - NO REPLY SENT");
+					}
+					try {
+						Thread.sleep((int) (rand.nextDouble() * 2 * delay));
+					} catch (InterruptedException e1) {
+						// TODO Auto-generated catch block
+						e1.printStackTrace();
+					}
+				} else {
+					System.out.println("SERVER: FILE WAS UNSUCCESSFULLY RECEIVED - NO REPLY SENT BACK");
 				}
 				break;
 			case BROKEN_PACKET:
@@ -142,7 +205,7 @@ public class Server {
 		byte[] requestedData = request.getData();
 		int packetSize = request.getLength();
 		DataPacket dataPacket;
-		System.out.println("THE SIZE OF RECEIVED DATAPACKET: " + packetSize);
+		//System.out.println("THE SIZE OF RECEIVED DATAPACKET: " + packetSize);
 		// If all written data is read and crc is left.
 		if (totalBytesRead == fileSize) {
 			System.out.println("SERVER: LAST DATA PACKET ONLY CRC");
@@ -165,7 +228,7 @@ public class Server {
 		} else {
 			System.out.println("SERVER: LAST DATA PACKET (WITHOUT CRC)");
 			bytesToBeRead = (int) (fileSize - totalBytesRead);
-			System.out.println(bytesToBeRead);
+			//System.out.println(bytesToBeRead);
 			dataPacket = new DataPacket(requestedData, bytesToBeRead, false);
 		}
 		sessionNr = dataPacket.getSessionNr();
@@ -177,14 +240,20 @@ public class Server {
 			outPutStream.write(data);
 			totalBytesRead += bytesToBeRead;
 			crc32.update(data);
-			System.out.println(fileSize + " " + totalBytesRead);
+			//System.out.println(fileSize + " " + totalBytesRead);
 			if (fileSize == totalBytesRead) {
 				outPutStream.close();
 			}
 		}
 		if (lastCrcIsReceived) {
-			System.out.println(dataPacket.getICrc() + " " + (int) crc32.getValue() );
+			//System.out.println(dataPacket.getICrc() + " " + (int) crc32.getValue());
 			checkFileIntegrity(dataPacket.getICrc(), (int) crc32.getValue());
+			try {
+				socket.setSoTimeout(0);
+			} catch (SocketException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 		}
 	}
 
@@ -206,7 +275,6 @@ public class Server {
 		// Get the packet CRC. We need fileNameSize because the input byte array
 		// is with default size of 1500.
 		int crcIdx = 18 + fileNameSize;
-		System.out.println("crcIdx " + crcIdx + " " + lStartPacketData);
 		int packetCrc = ((startPacketData[crcIdx] & 0xFF) << 24) | ((startPacketData[crcIdx + 1] & 0xFF) << 16)
 				| ((startPacketData[crcIdx + 2] & 0xFF) << 8) | (startPacketData[crcIdx + 3] & 0xFF);
 		// Create the crc on our own.
@@ -246,7 +314,10 @@ public class Server {
 			}
 		}
 		if (sessionNr != -1) {
-			return DATA_PACKET;
+			byte[] temp = request.getData();
+			if ((short) (((temp[0] & 0xFF) << 8) | (temp[1] & 0xFF)) == sessionNr) {
+				return DATA_PACKET;
+			}
 		}
 		return BROKEN_PACKET;
 	}
@@ -264,9 +335,11 @@ public class Server {
 		if (clientCrc == serverCrc) {
 			System.out.println("SERVER: FILE WAS SUCCESSFULLY RECEIVED");
 			System.out.println("SERVER: WAITING FOR NEXT FILE!\n");
+			fileIsComplete = true;
 		} else {
 			System.out.println("SERVER: FILE RECEIVE WAS UNSUCCESSFUL");
 			System.out.println("SERVER: DELETING FILE: " + outFileName);
+			fileIsComplete = false;
 			outFile.delete();
 		}
 	}

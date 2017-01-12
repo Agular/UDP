@@ -43,6 +43,11 @@ public class Client {
 		final int MAX_FAILED_CONNECTIONS = 10;
 		int failed_connections = 0;
 		int timeOutMs = 1000;
+		long sendTime = 0;
+		long receiveTime;
+		long RTT;
+		double datarate;
+		long totalTime = 0;
 
 		/*
 		 * Open a socket. Exit if failed.
@@ -170,7 +175,6 @@ public class Client {
 				}
 				int bytesRead = inFileStream.read(buf, 0, bytesToBeRead);
 				totalBytesRead += bytesRead;
-				System.out.println("bytesread: " + bytesRead + " bytesToBeRead: " + bytesToBeRead);
 				crc32.update(buf, 0, bytesToBeRead);
 				if (!lastPacket) {
 					dataPacket = new DataPacket(sessionNr, packetNr, buf, bytesRead);
@@ -186,16 +190,42 @@ public class Client {
 
 				data = dataPacket.returnData();
 				sendPacket = new DatagramPacket(data, data.length, IP, port);
+				System.out.println();
 				while (true) {
+					if (sendTime == 0) {
+						sendTime = System.nanoTime();
+					}
 					socket.send(sendPacket);
-					socket.receive(receiveAck);
-					ack = new Ack(receiveAck.getData());
-					if (isAckCorrect(ack, sessionNr, packetNr)) {
-						System.out.println("CLIENT: ACK FROM SERVER: SESSIONNR: " + ack.getSessionNr() + " PACKETNR: "
-								+ ack.getPacketNr() + "\n");
-						failed_connections = 0;
-						break;
-					} else {
+					try {
+						socket.receive(receiveAck);
+						RTT = System.nanoTime() - sendTime;
+						totalTime += RTT;
+						sendTime = 0;
+						if (bytesRead != 0) {
+							datarate = ((double) (bytesRead) * 8.0 / 1024.0) / ((double) (RTT) / (10 * 9));
+						} else {
+							datarate = (double) (4 * 8 / 1024) / (double) (RTT / (10 * 9));
+						}
+
+						datarate = (double) (Math.round(datarate * 1000) / 1000);
+						ack = new Ack(receiveAck.getData());
+						if (isAckCorrect(ack, sessionNr, packetNr)) {
+							System.out.println("CLIENT: ACK FROM SERVER: SESSIONNR: " + ack.getSessionNr()
+									+ " PACKETNR: " + ack.getPacketNr() + " RTT: " + datarate + " kBits/s" + "\n");
+							failed_connections = 0;
+							break;
+						} else {
+							failed_connections += 1;
+							if (failed_connections == MAX_FAILED_CONNECTIONS) {
+								System.out.println("CLIENT: SERVER FAILED 10 TIMES TO SEND CORRECT ACK");
+								System.out.println("CLIENT: EXITING");
+								System.exit(-1);
+							}
+						}
+
+					} catch (SocketTimeoutException to) {
+						System.out.println("CLIENT: SERVER TIMED OUT!");
+						to.printStackTrace();
 						failed_connections += 1;
 						if (failed_connections == MAX_FAILED_CONNECTIONS) {
 							System.out.println("CLIENT: SERVER FAILED 10 TIMES TO SEND CORRECT ACK");
@@ -203,15 +233,6 @@ public class Client {
 							System.exit(-1);
 						}
 					}
-				}
-			} catch (SocketTimeoutException to) {
-				System.out.println("CLIENT: SERVER TIMED OUT!");
-				to.printStackTrace();
-				failed_connections += 1;
-				if (failed_connections == MAX_FAILED_CONNECTIONS) {
-					System.out.println("CLIENT: SERVER FAILED 10 TIMES TO SEND CORRECT ACK");
-					System.out.println("CLIENT: EXITING");
-					System.exit(-1);
 				}
 			} catch (IOException e1) {
 				System.out.println("CLIENT: Error reading from file stream.");
@@ -228,15 +249,35 @@ public class Client {
 				System.out.println("CLIENT: CRC OF ALL DATA: " + dataPacket.getICrc());
 				sendPacket = new DatagramPacket(data, data.length, IP, port);
 				while (true) {
+					if (sendTime == 0) {
+						sendTime = System.nanoTime();
+					}
 					socket.send(sendPacket);
-					socket.receive(receiveAck);
-					ack = new Ack(receiveAck.getData());
-					if (isAckCorrect(ack, sessionNr, packetNr)) {
-						System.out.println("CLIENT: ACK FROM SERVER: SESSIONNR: " + ack.getSessionNr() + " PACKETNR: "
-								+ ack.getPacketNr() + "\n");
-						failed_connections = 0;
-						break;
-					} else {
+					try {
+						socket.receive(receiveAck);
+						RTT = System.nanoTime() - sendTime;
+						totalTime += RTT;
+						sendTime = 0;
+						datarate = (double) (4 * 8 / 1024) / (double) (RTT / (10 * 9));
+						datarate = (double) (Math.round(datarate * 1000) / 1000);
+						ack = new Ack(receiveAck.getData());
+						if (isAckCorrect(ack, sessionNr, packetNr)) {
+							System.out.println("CLIENT: ACK FROM SERVER: SESSIONNR: " + ack.getSessionNr()
+									+ " PACKETNR: " + ack.getPacketNr() + " RTT: " + datarate + " kBits/s" + "\n");
+							failed_connections = 0;
+							break;
+						} else {
+							failed_connections += 1;
+							if (failed_connections == MAX_FAILED_CONNECTIONS) {
+								System.out.println("CLIENT: SERVER FAILED 10 TIMES TO SEND CORRECT ACK");
+								System.out.println("CLIENT: EXITING");
+								System.exit(-1);
+							}
+						}
+
+					} catch (SocketTimeoutException to) {
+						System.out.println("CLIENT: SERVER TIMED OUT!");
+						to.printStackTrace();
 						failed_connections += 1;
 						if (failed_connections == MAX_FAILED_CONNECTIONS) {
 							System.out.println("CLIENT: SERVER FAILED 10 TIMES TO SEND CORRECT ACK");
@@ -245,16 +286,7 @@ public class Client {
 						}
 					}
 				}
-			} catch (SocketTimeoutException to) {
-				System.out.println("CLIENT: SERVER TIMED OUT!");
-				to.printStackTrace();
-				failed_connections += 1;
-				if (failed_connections == MAX_FAILED_CONNECTIONS) {
-					System.out.println("CLIENT: SERVER FAILED 10 TIMES TO SEND CORRECT ACK");
-					System.out.println("CLIENT: EXITING");
-					System.exit(-1);
-				}
-			}catch (IOException e2) {
+			} catch (IOException e2) {
 				e2.printStackTrace();
 			}
 		}
@@ -266,6 +298,13 @@ public class Client {
 			e.printStackTrace();
 		}
 		socket.close();
+
+		// SOME STATISTICS
+		double totalTimeS = (double) (totalTime) / (10 * 9);
+		double avgDatarate = (double) (fileSize) * 8 / 1024 / totalTimeS;
+		avgDatarate = (double) (Math.round(avgDatarate * 1000) / 1000);
+		System.out.println("SERVER: TOTAL TIME FOR SENDING: " + totalTimeS + " seconds");
+		System.out.println("SERVER: AVERAGE DATARATE: " + avgDatarate + " kBits/s");
 	}
 
 	public static boolean isAckCorrect(Ack ack, int currentSessionNr, int currentPacketNr) {
